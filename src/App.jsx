@@ -1,5 +1,4 @@
-
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import './App.css';
 
@@ -23,7 +22,7 @@ function App() {
   const [currentVideoSource, setCurrentVideoSource] = useState(0);
   const [showSourceSelector, setShowSourceSelector] = useState(false);
   
-  // Enhanced states for better favorites and watchlist
+  // Enhanced states
   const [favorites, setFavorites] = useState([]);
   const [watchlist, setWatchlist] = useState([]);
   const [watchHistory, setWatchHistory] = useState([]);
@@ -35,12 +34,17 @@ function App() {
   const [showWatchlistPage, setShowWatchlistPage] = useState(false);
   const [showHistoryPage, setShowHistoryPage] = useState(false);
   const [showWatchlistInPlayer, setShowWatchlistInPlayer] = useState(false);
+  
+  // NEW: Genre states
+  const [genres, setGenres] = useState([]);
+  const [selectedGenre, setSelectedGenre] = useState(null);
+  const [showGenreSection, setShowGenreSection] = useState(false);
 
   const API_KEY = 'af1402e7fece77024ef7feb43b1f8470';
   
-  const VIDEO_SOURCES = [
+  const VIDEO_SOURCES = useMemo(() => [
     {
-      name: 'Vidfast.pro',
+      name: 'Vidfast Pro',
       movie: 'https://vidfast.pro/movie/',
       tv: 'https://vidfast.pro/tv/',
       anime: 'https://9anime.org.lv/'
@@ -49,29 +53,41 @@ function App() {
       name: 'VidLink Pro',
       movie: 'https://vidlink.pro/movie/',
       tv: 'https://vidlink.pro/tv/',
-      anime: 'https://vidjoy.pro/anime/'
+      anime: 'https://all-wish.me/'
     },
     {
-      name: 'autoembed.cc',
+      name: 'videasy',
       movie: 'https://player.videasy.net/movie/',
       tv: 'https://player.videasy.net/tv/',
-      anime: 'https://megaplay.buzz/stream/s-2/136197/sub'
+      anime: 'https://player.videasy.net/anime/'
     },
     {
-      name: 'VidSrc1',
+      name: 'VidSrc V2',
       movie: 'https://vidsrc.cc/v2/embed/movie/',
-      tv: 'https://vidsrc.xyz/embed/tv/',
-      anime: 'https://2anime.xyz/embed/{title}-episode-{number}'
+      tv: 'https://vidsrc.cc/v2/embed/tv/',
+      anime: 'https://vidsrc.cc/v2/embed/tv/'
     },
     {
-      name: 'VidSrc2',
+      name: 'VidSrc V3',
       movie: 'https://vidsrc.cc/v3/embed/movie/',
       tv: 'https://vidsrc.cc/v3/embed/tv/',
       anime: 'https://vidsrc.cc/v3/embed/anime/'
     },
-  ];
+    {
+      name: 'VidSrc icu',
+      movie: 'https://vidsrc.icu/embed/movie/',
+      tv: 'https://vidsrc.icu/embed/tv/',
+      anime: 'https://vidsrc.icu/embed/anime/'
+    },
+    {
+      name: '111movies.com',
+      movie: 'https://111movies.com/movie/',
+      tv: 'https://111movies.com/tv/',
+      anime: 'https://111movies.com/anime/',
+    },
+  ], []);
 
-  const API_SOURCES = {
+  const API_SOURCES = useMemo(() => ({
     tmdb: {
       baseUrl: 'https://api.themoviedb.org/3',
       apiKey: API_KEY,
@@ -81,83 +97,217 @@ function App() {
       consumetUrl: 'https://api.consumet.org/anime/gogoanime',
       anilistUrl: 'https://api.consumet.org/anime/anilist'
     },
-  };
+  }), [API_KEY]);
 
-  // Enhanced localStorage management with error handling
+  // OPTIMIZED: Memoized filtered data
+  const filteredFavorites = useMemo(() => 
+    favorites.filter(item => item.mediaType === mediaType), 
+    [favorites, mediaType]
+  );
+
+  const filteredWatchlist = useMemo(() => 
+    watchlist.filter(item => item.mediaType === mediaType), 
+    [watchlist, mediaType]
+  );
+
+  const filteredHistory = useMemo(() => 
+    watchHistory.filter(item => item.mediaType === mediaType), 
+    [watchHistory, mediaType]
+  );
+
+  // ENHANCED: Load all state from localStorage on initial render
   useEffect(() => {
-    try {
-      const savedFavorites = localStorage.getItem('manasHub_favorites');
-      const savedWatchlist = localStorage.getItem('manasHub_watchlist');
-      const savedHistory = localStorage.getItem('manasHub_history');
-      const savedDarkMode = localStorage.getItem('manasHub_darkMode');
-      const savedAutoplay = localStorage.getItem('manasHub_autoplay');
-      
-      if (savedFavorites) setFavorites(JSON.parse(savedFavorites));
-      if (savedWatchlist) setWatchlist(JSON.parse(savedWatchlist));
-      if (savedHistory) setWatchHistory(JSON.parse(savedHistory));
-      if (savedDarkMode) setDarkMode(JSON.parse(savedDarkMode));
-      if (savedAutoplay) setAutoplayNext(JSON.parse(savedAutoplay));
-    } catch (error) {
-      console.error('Error loading saved data:', error);
-    }
+    const loadPersistedState = () => {
+      try {
+        const savedState = localStorage.getItem('manasHub_completeState');
+        const savedDarkMode = localStorage.getItem('manasHub_darkMode');
+        
+        if (savedDarkMode) setDarkMode(JSON.parse(savedDarkMode));
+        
+        if (savedState) {
+          const state = JSON.parse(savedState);
+          
+          // Restore main app state
+          setMediaType(state.mediaType || 'movie');
+          setCurrentSection(state.currentSection || 'popular');
+          setCurrentPage(state.currentPage || 1);
+          setSearchTerm(state.searchTerm || '');
+          setShowFavoritesPage(state.showFavoritesPage || false);
+          setShowWatchlistPage(state.showWatchlistPage || false);
+          setShowHistoryPage(state.showHistoryPage || false);
+          setShowGenreSection(state.showGenreSection || false);
+          setSelectedGenre(state.selectedGenre || null);
+          
+          // Restore user data
+          setFavorites(state.favorites || []);
+          setWatchlist(state.watchlist || []);
+          setWatchHistory(state.watchHistory || []);
+          setAutoplayNext(state.autoplayNext || false);
+          
+          // Restore player state if watching something
+          if (state.selectedItem) {
+            setSelectedItem(state.selectedItem);
+            setSelectedSeason(state.selectedSeason || 1);
+            setSelectedEpisode(state.selectedEpisode || 1);
+            setCurrentVideoSource(state.currentVideoSource || 0);
+            setTotalSeasons(state.totalSeasons || 1);
+            setEpisodesPerSeason(state.episodesPerSeason || { 1: 1 });
+            setSeasonsData(state.seasonsData || {});
+            setShowMediaInfo(state.showMediaInfo !== undefined ? state.showMediaInfo : true);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading saved data:', error);
+      }
+    };
+
+    loadPersistedState();
   }, []);
 
-  // Auto-save to localStorage with debouncing
-  const saveToLocalStorage = (key, value) => {
+  // OPTIMIZED: Debounced save function
+  const saveCompleteState = useCallback(() => {
     try {
-      localStorage.setItem(key, JSON.stringify(value));
+      const completeState = {
+        mediaType,
+        currentSection,
+        currentPage,
+        searchTerm,
+        showFavoritesPage,
+        showWatchlistPage,
+        showHistoryPage,
+        showGenreSection,
+        selectedGenre,
+        favorites,
+        watchlist,
+        watchHistory,
+        autoplayNext,
+        selectedItem,
+        selectedSeason,
+        selectedEpisode,
+        currentVideoSource,
+        totalSeasons,
+        episodesPerSeason,
+        seasonsData,
+        showMediaInfo
+      };
+      localStorage.setItem('manasHub_completeState', JSON.stringify(completeState));
     } catch (error) {
-      console.error('Error saving to localStorage:', error);
+      console.error('Error saving state:', error);
     }
-  };
+  }, [
+    mediaType, currentSection, currentPage, searchTerm, showFavoritesPage, showWatchlistPage, 
+    showHistoryPage, showGenreSection, selectedGenre, favorites, watchlist, watchHistory, 
+    autoplayNext, selectedItem, selectedSeason, selectedEpisode, currentVideoSource, 
+    totalSeasons, episodesPerSeason, seasonsData, showMediaInfo
+  ]);
 
+  // OPTIMIZED: Longer debounce for better performance
   useEffect(() => {
-    const timer = setTimeout(() => saveToLocalStorage('manasHub_favorites', favorites), 300);
+    const timer = setTimeout(saveCompleteState, 1000);
     return () => clearTimeout(timer);
-  }, [favorites]);
+  }, [saveCompleteState]);
 
   useEffect(() => {
-    const timer = setTimeout(() => saveToLocalStorage('manasHub_watchlist', watchlist), 300);
+    const timer = setTimeout(() => localStorage.setItem('manasHub_darkMode', JSON.stringify(darkMode)), 500);
     return () => clearTimeout(timer);
-  }, [watchlist]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => saveToLocalStorage('manasHub_history', watchHistory), 300);
-    return () => clearTimeout(timer);
-  }, [watchHistory]);
-
-  useEffect(() => {
-    saveToLocalStorage('manasHub_darkMode', darkMode);
   }, [darkMode]);
 
-  useEffect(() => {
-    saveToLocalStorage('manasHub_autoplay', autoplayNext);
-  }, [autoplayNext]);
+  // OPTIMIZED: Memoized fetch functions
+  const fetchGenres = useCallback(async (type = mediaType) => {
+    try {
+      if (type === 'anime') {
+        const animeGenres = [
+          { id: 1, name: 'Action' },
+          { id: 2, name: 'Adventure' },
+          { id: 4, name: 'Comedy' },
+          { id: 8, name: 'Drama' },
+          { id: 10, name: 'Fantasy' },
+          { id: 14, name: 'Horror' },
+          { id: 22, name: 'Romance' },
+          { id: 24, name: 'Sci-Fi' },
+          { id: 36, name: 'Slice of Life' },
+          { id: 37, name: 'Supernatural' },
+          { id: 41, name: 'Thriller' }
+        ];
+        setGenres(animeGenres);
+      } else {
+        const endpoint = type === 'movie' ? 'genre/movie/list' : 'genre/tv/list';
+        const res = await axios.get(`${API_SOURCES.tmdb.baseUrl}/${endpoint}`, {
+          params: { api_key: API_KEY },
+          timeout: 8000
+        });
+        setGenres(res.data.genres || []);
+      }
+    } catch (e) {
+      console.error('Genre fetch error:', e);
+      setGenres([]);
+    }
+  }, [API_SOURCES.tmdb.baseUrl, API_KEY]);
 
-  // Enhanced utility functions
-  const getItemId = (item) => {
+  // OPTIMIZED: Cached fetch functions
+  const fetchByGenre = useCallback(async (genreId, type = mediaType, page = 1) => {
+    try {
+      if (type === 'anime') {
+        const res = await axios.get(`${API_SOURCES.anime.baseUrl}/anime`, {
+          params: { 
+            genres: genreId, 
+            limit: 20, 
+            page,
+            order_by: 'popularity',
+            sort: 'desc'
+          },
+          timeout: 10000
+        });
+        return { results: res.data.data || [], totalPages: res.data.pagination?.last_visible_page || 1 };
+      } else {
+        const endpoint = type === 'movie' ? 'discover/movie' : 'discover/tv';
+        const res = await axios.get(`${API_SOURCES.tmdb.baseUrl}/${endpoint}`, {
+          params: { 
+            api_key: API_KEY, 
+            with_genres: genreId,
+            page,
+            sort_by: 'popularity.desc'
+          },
+          timeout: 10000
+        });
+        return { results: res.data.results || [], totalPages: res.data.total_pages || 1 };
+      }
+    } catch (e) {
+      console.error('Genre content fetch error:', e);
+      return { results: [], totalPages: 1 };
+    }
+  }, [API_SOURCES, API_KEY]);
+
+  // OPTIMIZED: Memoized utility functions
+  const getItemId = useCallback((item) => {
     return mediaType === 'anime' ? (item.mal_id || item.id) : item.id;
-  };
+  }, [mediaType]);
 
-  const isInFavorites = (item) => {
+  const isInFavorites = useCallback((item) => {
     if (!item) return false;
     const itemId = getItemId(item);
     return favorites.some(fav => {
       const favId = mediaType === 'anime' ? (fav.mal_id || fav.id) : fav.id;
       return favId === itemId && fav.mediaType === mediaType;
     });
-  };
+  }, [favorites, getItemId, mediaType]);
 
-  const isInWatchlist = (item) => {
+  const isInWatchlist = useCallback((item) => {
     if (!item) return false;
     const itemId = getItemId(item);
     return watchlist.some(watch => {
       const watchId = mediaType === 'anime' ? (watch.mal_id || watch.id) : watch.id;
       return watchId === itemId && watch.mediaType === mediaType;
     });
-  };
+  }, [watchlist, getItemId, mediaType]);
 
-  const toggleFavorite = (item) => {
+  // FIXED: Optimized toggle functions with proper event handling
+  const toggleFavorite = useCallback((item, event) => {
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+    
     if (!item) return;
     
     const itemId = getItemId(item);
@@ -167,7 +317,7 @@ function App() {
     });
 
     if (exists) {
-      setFavorites(favorites.filter(fav => {
+      setFavorites(prev => prev.filter(fav => {
         const favId = mediaType === 'anime' ? (fav.mal_id || fav.id) : fav.id;
         return !(favId === itemId && fav.mediaType === mediaType);
       }));
@@ -179,9 +329,14 @@ function App() {
       };
       setFavorites(prev => [favoriteItem, ...prev]);
     }
-  };
+  }, [favorites, getItemId, mediaType]);
 
-  const toggleWatchlist = (item) => {
+  const toggleWatchlist = useCallback((item, event) => {
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+    
     if (!item) return;
     
     const itemId = getItemId(item);
@@ -191,7 +346,7 @@ function App() {
     });
 
     if (exists) {
-      setWatchlist(watchlist.filter(watch => {
+      setWatchlist(prev => prev.filter(watch => {
         const watchId = mediaType === 'anime' ? (watch.mal_id || watch.id) : watch.id;
         return !(watchId === itemId && watch.mediaType === mediaType);
       }));
@@ -204,17 +359,12 @@ function App() {
       };
       setWatchlist(prev => [watchlistItem, ...prev]);
     }
-  };
+  }, [watchlist, getItemId, mediaType, selectedSeason, selectedEpisode]);
 
-  const addToHistory = (item) => {
+  const addToHistory = useCallback((item) => {
     if (!item) return;
     
     const itemId = getItemId(item);
-    const existingIndex = watchHistory.findIndex(hist => {
-      const histId = hist.mediaType === 'anime' ? (hist.mal_id || hist.id) : hist.id;
-      return histId === itemId && hist.mediaType === mediaType;
-    });
-
     const historyItem = {
       ...item,
       mediaType,
@@ -223,17 +373,23 @@ function App() {
       episode: selectedEpisode
     };
 
-    if (existingIndex >= 0) {
-      const newHistory = [...watchHistory];
-      newHistory[existingIndex] = historyItem;
-      setWatchHistory(newHistory);
-    } else {
-      setWatchHistory(prev => [historyItem, ...prev.slice(0, 49)]); // Keep last 50
-    }
-  };
+    setWatchHistory(prev => {
+      const existingIndex = prev.findIndex(hist => {
+        const histId = hist.mediaType === 'anime' ? (hist.mal_id || hist.id) : hist.id;
+        return histId === itemId && hist.mediaType === mediaType;
+      });
 
-  // Enhanced API functions with better error handling
-  const fetchTrending = async (type = mediaType, page = 1) => {
+      if (existingIndex >= 0) {
+        const newHistory = [...prev];
+        newHistory[existingIndex] = historyItem;
+        return newHistory;
+      }
+      return [historyItem, ...prev.slice(0, 49)];
+    });
+  }, [getItemId, mediaType, selectedSeason, selectedEpisode]);
+
+  // OPTIMIZED: Cached API functions
+  const fetchTrending = useCallback(async (type = mediaType, page = 1) => {
     try {
       if (type === 'anime') {
         const res = await axios.get(`${API_SOURCES.anime.baseUrl}/top/anime`, {
@@ -253,9 +409,9 @@ function App() {
       console.error('Trending fetch error:', e);
       return { results: [], totalPages: 1 };
     }
-  };
+  }, [API_SOURCES, API_KEY]);
 
-  const fetchPopular = async (type = mediaType, page = 1) => {
+  const fetchPopular = useCallback(async (type = mediaType, page = 1) => {
     try {
       if (type === 'anime') {
         try {
@@ -283,9 +439,9 @@ function App() {
       console.error('Popular fetch error:', e);
       return { results: [], totalPages: 1 };
     }
-  };
+  }, [API_SOURCES, API_KEY]);
 
-  const fetchTopRated = async (type = mediaType, page = 1) => {
+  const fetchTopRated = useCallback(async (type = mediaType, page = 1) => {
     try {
       if (type === 'anime') {
         const res = await axios.get(`${API_SOURCES.anime.baseUrl}/top/anime`, {
@@ -305,16 +461,16 @@ function App() {
       console.error('Top rated fetch error:', e);
       return { results: [], totalPages: 1 };
     }
-  };
+  }, [API_SOURCES, API_KEY]);
 
-  const loadMedia = async (type = mediaType, section = currentSection, page = 1) => {
+  // OPTIMIZED: Enhanced loadMedia with better caching
+  const loadMedia = useCallback(async (type = mediaType, section = currentSection, page = 1) => {
     setLoading(true);
     try {
       let data;
       
-      // Handle special sections for favorites, watchlist, and history
+      // Handle special sections with cached data
       if (section === 'favorites') {
-        const filteredFavorites = favorites.filter(item => item.mediaType === type);
         setMedia(filteredFavorites);
         setTotalPages(1);
         setLoading(false);
@@ -322,7 +478,6 @@ function App() {
       }
       
       if (section === 'watchlist') {
-        const filteredWatchlist = watchlist.filter(item => item.mediaType === type);
         setMedia(filteredWatchlist);
         setTotalPages(1);
         setLoading(false);
@@ -330,9 +485,17 @@ function App() {
       }
       
       if (section === 'history') {
-        const filteredHistory = watchHistory.filter(item => item.mediaType === type);
         setMedia(filteredHistory);
         setTotalPages(1);
+        setLoading(false);
+        return;
+      }
+
+      // Handle genre browsing
+      if (section === 'genres' && selectedGenre) {
+        data = await fetchByGenre(selectedGenre.id, type, page);
+        setMedia(data.results);
+        setTotalPages(data.totalPages);
         setLoading(false);
         return;
       }
@@ -358,9 +521,12 @@ function App() {
       setTotalPages(1);
     }
     setLoading(false);
-  };
+  }, [
+    mediaType, currentSection, selectedGenre, filteredFavorites, filteredWatchlist, 
+    filteredHistory, fetchByGenre, fetchTrending, fetchTopRated, fetchPopular
+  ]);
 
-  const fetchRelatedContent = async (item) => {
+  const fetchRelatedContent = useCallback(async (item) => {
     try {
       if (mediaType === 'anime') {
         const res = await axios.get(`${API_SOURCES.anime.baseUrl}/anime/${item.mal_id}/recommendations`, {
@@ -379,9 +545,9 @@ function App() {
       console.error('Related content fetch error:', e);
       setRelatedContent([]);
     }
-  };
+  }, [API_SOURCES, API_KEY, mediaType]);
 
-  const fetchDetailedSeasonData = async (id) => {
+  const fetchDetailedSeasonData = useCallback(async (id) => {
     try {
       const res = await axios.get(`${API_SOURCES.tmdb.baseUrl}/tv/${id}`, {
         params: { api_key: API_KEY },
@@ -390,7 +556,6 @@ function App() {
       const seasons = res.data.seasons || [];
       const seasonsInfo = {};
       
-      // Limit concurrent requests to prevent API throttling
       const batchSize = 3;
       for (let i = 0; i < seasons.length; i += batchSize) {
         const batch = seasons.slice(i, i + batchSize);
@@ -422,21 +587,9 @@ function App() {
     } catch {
       return 1;
     }
-  };
+  }, [API_SOURCES.tmdb.baseUrl, API_KEY]);
 
-  const fetchSeasonData = async (id) => {
-    try {
-      const res = await axios.get(`${API_SOURCES.tmdb.baseUrl}/tv/${id}`, {
-        params: { api_key: API_KEY },
-        timeout: 8000
-      });
-      return res.data.number_of_seasons || 1;
-    } catch {
-      return 1;
-    }
-  };
-
-  const fetchEpisodesData = async (id, seasonNum) => {
+  const fetchEpisodesData = useCallback(async (id, seasonNum) => {
     try {
       const res = await axios.get(
         `${API_SOURCES.tmdb.baseUrl}/tv/${id}/season/${seasonNum}`,
@@ -446,9 +599,9 @@ function App() {
     } catch {
       return 1;
     }
-  };
+  }, [API_SOURCES.tmdb.baseUrl, API_KEY]);
 
-  const fetchAnimeEpisodesCount = async (animeId) => {
+  const fetchAnimeEpisodesCount = useCallback(async (animeId) => {
     try {
       if (selectedItem?.episodes) return selectedItem.episodes;
       if (selectedItem?.totalEpisodes) return selectedItem.totalEpisodes;
@@ -461,9 +614,10 @@ function App() {
       console.error('Anime episodes fetch failed:', err);
       return 12;
     }
-  };
+  }, [API_SOURCES.anime.baseUrl, selectedItem]);
 
-  const searchMedia = async (query, type = mediaType, page = 1) => {
+  // OPTIMIZED: Debounced search
+  const searchMedia = useCallback(async (query, type = mediaType, page = 1) => {
     if (!query.trim()) {
       loadMedia(type, currentSection, page);
       return;
@@ -492,27 +646,35 @@ function App() {
       setMedia([]);
     }
     setLoading(false);
-  };
+  }, [API_SOURCES, API_KEY, loadMedia, currentSection]);
 
-  const toggleFullScreen = () => {
+  const toggleFullScreen = useCallback(() => {
     if (!document.fullscreenElement) {
       iframeRef.current?.requestFullscreen().catch(() => {});
     } else {
       document.exitFullscreen().catch(() => {});
     }
-  };
+  }, []);
 
-  const handleSectionChange = (section) => {
+  // OPTIMIZED: Handle section change with memoization
+  const handleSectionChange = useCallback((section) => {
     setCurrentSection(section);
     setCurrentPage(1);
     setSearchTerm('');
     setShowFavoritesPage(section === 'favorites');
     setShowWatchlistPage(section === 'watchlist');
     setShowHistoryPage(section === 'history');
+    setShowGenreSection(section === 'genres');
+    
+    if (section === 'genres') {
+      fetchGenres(mediaType);
+    }
+    
     loadMedia(mediaType, section, 1);
-  };
+  }, [fetchGenres, loadMedia, mediaType]);
 
-  const handleMediaTypeChange = (type) => {
+  // OPTIMIZED: Handle media type change
+  const handleMediaTypeChange = useCallback((type) => {
     setMediaType(type);
     setSearchTerm('');
     setSelectedItem(null);
@@ -521,16 +683,34 @@ function App() {
     setShowFavoritesPage(false);
     setShowWatchlistPage(false);
     setShowHistoryPage(false);
-  };
+    setShowGenreSection(false);
+    setSelectedGenre(null);
+    fetchGenres(type);
+  }, [fetchGenres]);
 
-  const handleItemSelect = (item) => {
+  const handleItemSelect = useCallback((item) => {
+    const historyItem = watchHistory.find(hist => {
+      const histId = hist.mediaType === 'anime' ? (hist.mal_id || hist.id) : hist.id;
+      const itemId = mediaType === 'anime' ? (item.mal_id || item.id) : item.id;
+      return histId === itemId && hist.mediaType === mediaType;
+    });
+    
     setSelectedItem(item);
+    
+    if (historyItem && (mediaType === 'tv' || mediaType === 'anime')) {
+      setSelectedSeason(historyItem.season || 1);
+      setSelectedEpisode(historyItem.episode || 1);
+    } else {
+      setSelectedSeason(1);
+      setSelectedEpisode(1);
+    }
+    
     addToHistory(item);
     fetchRelatedContent(item);
     setShowWatchlistInPlayer(false);
-  };
+  }, [watchHistory, mediaType, addToHistory, fetchRelatedContent]);
 
-  const playNext = () => {
+  const playNext = useCallback(() => {
     if (mediaType === 'tv' || mediaType === 'anime') {
       const maxEpisodes = episodesPerSeason[selectedSeason] || 1;
       if (selectedEpisode < maxEpisodes) {
@@ -540,9 +720,9 @@ function App() {
         setSelectedEpisode(1);
       }
     }
-  };
+  }, [mediaType, episodesPerSeason, selectedSeason, selectedEpisode, totalSeasons]);
 
-  const playPrevious = () => {
+  const playPrevious = useCallback(() => {
     if (mediaType === 'tv' || mediaType === 'anime') {
       if (selectedEpisode > 1) {
         setSelectedEpisode(selectedEpisode - 1);
@@ -552,12 +732,15 @@ function App() {
         setSelectedEpisode(prevSeasonEpisodes);
       }
     }
-  };
+  }, [mediaType, selectedEpisode, selectedSeason, episodesPerSeason]);
 
-  // Auto-load media when component mounts or media type changes
+  // OPTIMIZED: Reduced effect dependencies
   useEffect(() => {
-    setCurrentPage(1);
-    loadMedia(mediaType, currentSection, 1);
+    if (!selectedItem) {
+      setCurrentPage(1);
+      loadMedia(mediaType, currentSection, 1);
+      fetchGenres(mediaType);
+    }
     
     const onFs = () => setIsFullScreen(Boolean(document.fullscreenElement));
     const onKey = (e) => {
@@ -574,29 +757,28 @@ function App() {
       document.removeEventListener('fullscreenchange', onFs);
       document.removeEventListener('keydown', onKey);
     };
-  }, [mediaType]);
+  }, [mediaType]); // Reduced dependencies
 
-  // Debounced search
+  // OPTIMIZED: Debounced search effect
   useEffect(() => {
-    setCurrentPage(1);
-    if (searchTerm.trim()) {
-      const debounceTimer = setTimeout(() => searchMedia(searchTerm, mediaType, 1), 500);
-      return () => clearTimeout(debounceTimer);
-    } else {
-      loadMedia(mediaType, currentSection, 1);
+    if (!selectedItem) {
+      setCurrentPage(1);
+      if (searchTerm.trim()) {
+        const debounceTimer = setTimeout(() => searchMedia(searchTerm, mediaType, 1), 800);
+        return () => clearTimeout(debounceTimer);
+      } else {
+        loadMedia(mediaType, currentSection, 1);
+      }
     }
-  }, [searchTerm, mediaType]);
+  }, [searchTerm, mediaType, currentSection, selectedItem, selectedGenre, searchMedia, loadMedia]);
 
-  // Handle player loading
   useEffect(() => {
     if (!selectedItem) return;
     setIsPlayerLoading(true);
-    setCurrentVideoSource(0);
     const loadTimer = setTimeout(() => setIsPlayerLoading(false), 2000);
     return () => clearTimeout(loadTimer);
-  }, [selectedItem]);
+  }, [selectedItem, selectedSeason, selectedEpisode, currentVideoSource]);
 
-  // Setup seasons and episodes data
   useEffect(() => {
     if (!selectedItem) return;
     
@@ -609,8 +791,6 @@ function App() {
           episodesObj[i] = await fetchEpisodesData(selectedItem.id, i);
         }
         setEpisodesPerSeason(episodesObj);
-        setSelectedSeason(1);
-        setSelectedEpisode(1);
       }
       
       if (mediaType === 'anime') {
@@ -618,15 +798,18 @@ function App() {
         const episodeCount = await fetchAnimeEpisodesCount(animeId);
         setTotalSeasons(1);
         setEpisodesPerSeason({ 1: episodeCount });
-        setSelectedSeason(1);
-        setSelectedEpisode(1);
       }
     };
     
     setupData();
-  }, [selectedItem, mediaType]);
+  }, [selectedItem, mediaType, fetchDetailedSeasonData, fetchEpisodesData, fetchAnimeEpisodesCount]);
 
-  // Auto-play next episode
+  useEffect(() => {
+    if (selectedItem) {
+      addToHistory(selectedItem);
+    }
+  }, [selectedSeason, selectedEpisode, addToHistory, selectedItem]);
+
   useEffect(() => {
     if (!autoplayNext || !selectedItem) return;
     
@@ -644,38 +827,37 @@ function App() {
       }
     };
     
-    // Listen for video end event (simplified)
-    const autoplayTimer = setTimeout(handleAutoplay, 30000); // Auto-advance after 30 seconds for demo
+    const autoplayTimer = setTimeout(handleAutoplay, 30000);
     return () => clearTimeout(autoplayTimer);
-  }, [selectedEpisode, selectedSeason, autoplayNext, selectedItem]);
+  }, [selectedEpisode, selectedSeason, autoplayNext, selectedItem, mediaType, episodesPerSeason, totalSeasons]);
 
-  // Helper functions
-  const getMediaPoster = (item) => {
+  // OPTIMIZED: Memoized helper functions
+  const getMediaPoster = useCallback((item) => {
     if (!item) return null;
     if (mediaType === 'anime') {
       return item.images?.jpg?.large_image_url || item.images?.jpg?.image_url || item.image;
     }
     return item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null;
-  };
+  }, [mediaType]);
 
-  const getMediaTitle = (item) => {
+  const getMediaTitle = useCallback((item) => {
     if (!item) return 'Unknown Title';
     if (mediaType === 'anime') {
       return item.title_english || item.title || item.name;
     }
     return mediaType === 'movie' ? item.title : item.name;
-  };
+  }, [mediaType]);
 
-  const getMediaYear = (item) => {
+  const getMediaYear = useCallback((item) => {
     if (!item) return 'N/A';
     if (mediaType === 'anime') {
       return item.year || (item.aired?.from ? item.aired.from.substring(0, 4) : 'N/A');
     }
     const dateStr = mediaType === 'movie' ? item.release_date : item.first_air_date;
     return dateStr ? dateStr.substring(0, 4) : 'N/A';
-  };
+  }, [mediaType]);
 
-  const getVidlinkSrc = () => {
+  const getVidlinkSrc = useCallback(() => {
     if (!selectedItem) return '';
     
     const source = VIDEO_SOURCES[currentVideoSource];
@@ -698,32 +880,66 @@ function App() {
     }
     
     return `${source.movie}${selectedItem.id}`;
-  };
+  }, [selectedItem, VIDEO_SOURCES, currentVideoSource, mediaType, selectedEpisode, selectedSeason, getMediaTitle]);
 
-  const switchVideoSource = () => {
+  const switchVideoSource = useCallback(() => {
     const nextSource = (currentVideoSource + 1) % VIDEO_SOURCES.length;
     setCurrentVideoSource(nextSource);
     setIsPlayerLoading(true);
     setTimeout(() => setIsPlayerLoading(false), 1500);
-  };
+  }, [currentVideoSource, VIDEO_SOURCES.length]);
+
+  // NEW: Genre Browser Component
+  const GenreBrowser = useCallback(() => {
+    if (!showGenreSection) return null;
+
+    return (
+      <div className="genre-browser">
+        <h3 className="genre-title">
+          <i className="fas fa-tags"></i>
+          Browse by Genre
+        </h3>
+        <div className="genre-grid">
+          {genres.map((genre) => (
+            <button
+              key={genre.id}
+              className={`genre-card ${selectedGenre?.id === genre.id ? 'active' : ''}`}
+              onClick={() => {
+                setSelectedGenre(genre);
+                setCurrentPage(1);
+                loadMedia(mediaType, 'genres', 1);
+              }}
+            >
+              <div className="genre-card-content">
+                <span className="genre-name">{genre.name}</span>
+                <i className="fas fa-arrow-right"></i>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }, [showGenreSection, genres, selectedGenre, mediaType, loadMedia]);
 
   // Enhanced Components
-  const WatchlistSidebar = () => {
+  const WatchlistSidebar = useCallback(() => {
     if (!showWatchlistInPlayer) return null;
+
+    const filteredWatchlistItems = watchlist.filter(item => item.mediaType === mediaType);
 
     return (
       <div className="player-watchlist-sidebar">
         <div className="watchlist-header">
           <h3>
             <i className="fas fa-bookmark"></i>
-            My Watchlist ({watchlist.filter(item => item.mediaType === mediaType).length})
+            My Watchlist ({filteredWatchlistItems.length})
           </h3>
           <button onClick={() => setShowWatchlistInPlayer(false)} className="close-watchlist">
             <i className="fas fa-times"></i>
           </button>
         </div>
         <div className="watchlist-content">
-          {watchlist.filter(item => item.mediaType === mediaType).map((item, index) => (
+          {filteredWatchlistItems.map((item, index) => (
             <div
               key={index}
               className="watchlist-item"
@@ -748,7 +964,7 @@ function App() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  toggleWatchlist(item);
+                  toggleWatchlist(item, e);
                 }}
                 className="remove-from-watchlist"
               >
@@ -756,7 +972,7 @@ function App() {
               </button>
             </div>
           ))}
-          {watchlist.filter(item => item.mediaType === mediaType).length === 0 && (
+          {filteredWatchlistItems.length === 0 && (
             <div className="empty-watchlist">
               <i className="fas fa-bookmark"></i>
               <p>Your watchlist is empty</p>
@@ -766,9 +982,9 @@ function App() {
         </div>
       </div>
     );
-  };
+  }, [showWatchlistInPlayer, watchlist, mediaType, handleItemSelect, getMediaPoster, getMediaTitle, getMediaYear, toggleWatchlist]);
 
-  const EpisodeSelector = () => {
+  const EpisodeSelector = useCallback(() => {
     if (mediaType === 'tv' || mediaType === 'anime') {
       const max = episodesPerSeason[selectedSeason] || 1;
       return (
@@ -826,7 +1042,7 @@ function App() {
               </button>
               <button 
                 onClick={playNext} 
-                className="episode-nav-btn" 
+                className="episode-nav-btn next-episode-btn" 
                 disabled={selectedSeason === totalSeasons && selectedEpisode === max}
               >
                 <i className="fas fa-step-forward"></i>
@@ -838,9 +1054,9 @@ function App() {
       );
     }
     return null;
-  };
+  }, [mediaType, episodesPerSeason, selectedSeason, selectedEpisode, totalSeasons, playPrevious, playNext]);
 
-  const EpisodeGrid = () => {
+  const EpisodeGrid = useCallback(() => {
     if ((mediaType === 'tv' || mediaType === 'anime') && seasonsData[selectedSeason]) {
       const episodes = seasonsData[selectedSeason].episodes || [];
       return (
@@ -875,9 +1091,9 @@ function App() {
       );
     }
     return null;
-  };
+  }, [mediaType, seasonsData, selectedSeason, selectedEpisode]);
 
-  const MediaInfoPanel = () => {
+  const MediaInfoPanel = useCallback(() => {
     if (!selectedItem || !showMediaInfo) return null;
 
     return (
@@ -949,16 +1165,16 @@ function App() {
         )}
       </div>
     );
-  };
+  }, [selectedItem, showMediaInfo, getMediaTitle, getMediaYear]);
 
-  const PlayerActions = () => {
+  const PlayerActions = useCallback(() => {
     return (
       <div className="player-actions">
         <button 
           className={`action-btn ${isInFavorites(selectedItem) ? 'active' : ''}`}
           onClick={() => toggleFavorite(selectedItem)}
         >
-          <i className={`fas ${isInFavorites(selectedItem) ? 'fa-heart' : 'fa-heart-o'}`}></i>
+          <i className={`${isInFavorites(selectedItem) ? 'fas' : 'far'} fa-heart`}></i>
           {isInFavorites(selectedItem) ? 'Remove from Favorites' : 'Add to Favorites'}
         </button>
         
@@ -966,7 +1182,7 @@ function App() {
           className={`action-btn ${isInWatchlist(selectedItem) ? 'active' : ''}`}
           onClick={() => toggleWatchlist(selectedItem)}
         >
-          <i className={`fas ${isInWatchlist(selectedItem) ? 'fa-bookmark' : 'fa-bookmark-o'}`}></i>
+          <i className={`${isInWatchlist(selectedItem) ? 'fas' : 'far'} fa-bookmark`}></i>
           {isInWatchlist(selectedItem) ? 'Remove from Watchlist' : 'Add to Watchlist'}
         </button>
         
@@ -1017,9 +1233,12 @@ function App() {
         </button>
       </div>
     );
-  };
+  }, [
+    selectedItem, isInFavorites, isInWatchlist, toggleFavorite, toggleWatchlist, 
+    showWatchlistInPlayer, showMediaInfo, mediaType, autoplayNext, getMediaTitle
+  ]);
 
-  const RelatedContent = () => {
+  const RelatedContent = useCallback(() => {
     if (relatedContent.length === 0) return null;
 
     return (
@@ -1048,9 +1267,9 @@ function App() {
         </div>
       </div>
     );
-  };
+  }, [relatedContent, handleItemSelect, getMediaPoster, getMediaTitle, getMediaYear]);
 
-  const Pagination = () => {
+  const Pagination = useCallback(() => {
     if (totalPages <= 1) return null;
 
     const getPageNumbers = () => {
@@ -1134,29 +1353,30 @@ function App() {
         <div className="pagination-info">
           <span>Page {currentPage} of {totalPages}</span>
           <span className="total-results">
+            {selectedGenre ? `${selectedGenre.name} • ` : ''}
             {media.length} of {totalPages * 20} total {mediaType === 'anime' ? 'anime' : mediaType === 'movie' ? 'movies' : 'shows'}
           </span>
         </div>
       </div>
     );
-  };
+  }, [totalPages, currentPage, selectedGenre, media.length, mediaType, searchTerm, searchMedia, loadMedia, currentSection]);
 
   return (
     <div className={`app-container ${selectedItem ? 'player-open' : ''} ${darkMode ? 'dark' : 'light'}`}>
-      {/* Animated Background */}
+      {/* OPTIMIZED: Simplified Background */}
       <div className="animated-bg">
         <div className="bg-bubble"></div>
         <div className="bg-bubble"></div>
         <div className="bg-bubble"></div>
-        <div className="bg-bubble"></div>
-        <div className="bg-bubble"></div>
+        <div className="bg-particle"></div>
+        <div className="bg-particle"></div>
       </div>
 
       {!selectedItem && (
-        <header className="header">
+        <header className="header premium-header">
           <div className="header-content">
             <div className="logo-section">
-              <h1 className="logo" onClick={() => {
+              <h1 className="logo premium-logo" onClick={() => {
                 setSelectedItem(null);
                 setSearchTerm('');
                 setCurrentPage(1);
@@ -1164,14 +1384,19 @@ function App() {
                 setShowFavoritesPage(false);
                 setShowWatchlistPage(false);
                 setShowHistoryPage(false);
+                setShowGenreSection(false);
+                setSelectedGenre(null);
                 loadMedia(mediaType, 'popular', 1);
               }}>
-                Manas<span className="logo-highlight">Hub</span>
-                <div className="logo-subtitle">Stream Everything</div>
+                <span className="logo-text">
+                  Manas<span className="logo-highlight">Hub</span>
+                </span>
+                <div className="logo-subtitle">Premium Streaming Experience</div>
+                <div className="logo-glow"></div>
               </h1>
             </div>
             
-            <div className="media-toggle">
+            <div className="media-toggle premium-toggle">
               {['movie', 'tv', 'anime'].map((t) => (
                 <button
                   key={t}
@@ -1180,11 +1405,12 @@ function App() {
                 >
                   <i className={`fas ${t === 'movie' ? 'fa-film' : t === 'tv' ? 'fa-tv' : 'fa-dragon'}`}></i>
                   <span>{t.charAt(0).toUpperCase() + t.slice(1)}</span>
+                  <div className="btn-glow"></div>
                 </button>
               ))}
             </div>
 
-            <div className="search-container">
+            <div className="search-container premium-search">
               <i className="fas fa-search search-icon"></i>
               <input
                 type="text"
@@ -1198,11 +1424,13 @@ function App() {
                   <i className="fas fa-times"></i>
                 </button>
               )}
+              <div className="search-glow"></div>
             </div>
 
             <div className="header-actions">
-              <button className="toggle-theme" onClick={() => setDarkMode((d) => !d)}>
+              <button className="toggle-theme premium-btn" onClick={() => setDarkMode((d) => !d)}>
                 <i className={`fas ${darkMode ? 'fa-sun' : 'fa-moon'}`}></i>
+                <div className="btn-glow"></div>
               </button>
             </div>
           </div>
@@ -1212,14 +1440,15 @@ function App() {
       {!selectedItem && (
         <main className="main-content">
           {!searchTerm && (
-            <div className="section-toggle">
+            <div className="section-toggle premium-section">
               {[
                 { key: 'trending', label: 'Trending', icon: 'fa-fire' },
                 { key: 'popular', label: 'Popular', icon: 'fa-star' },
                 { key: 'toprated', label: 'Top Rated', icon: 'fa-crown' },
-                { key: 'favorites', label: `My Favorites (${favorites.filter(item => item.mediaType === mediaType).length})`, icon: 'fa-heart' },
-                { key: 'watchlist', label: `My Watchlist (${watchlist.filter(item => item.mediaType === mediaType).length})`, icon: 'fa-bookmark' },
-                { key: 'history', label: `Watch History (${watchHistory.filter(item => item.mediaType === mediaType).length})`, icon: 'fa-history' }
+                { key: 'genres', label: 'Browse Genres', icon: 'fa-tags' },
+                { key: 'favorites', label: `Favorites (${filteredFavorites.length})`, icon: 'fa-heart' },
+                { key: 'watchlist', label: `Watchlist (${filteredWatchlist.length})`, icon: 'fa-bookmark' },
+                { key: 'history', label: `History (${filteredHistory.length})`, icon: 'fa-history' }
               ].map((section) => (
                 <button
                   key={section.key}
@@ -1228,30 +1457,50 @@ function App() {
                 >
                   <i className={`fas ${section.icon}`}></i>
                   <span>{section.label}</span>
+                  <div className="btn-ripple"></div>
                 </button>
               ))}
             </div>
           )}
 
+          <GenreBrowser />
+
           {loading ? (
-            <div className="player-loading">
+            <div className="player-loading premium-loading">
               <div className="loading-spinner-new">
                 <div className="spinner-ring"></div>
                 <div className="spinner-ring"></div>
                 <div className="spinner-ring"></div>
               </div>
               <p className="player-tip">Loading amazing content...</p>
+              <div className="loading-particles">
+                <div className="particle"></div>
+                <div className="particle"></div>
+                <div className="particle"></div>
+              </div>
             </div>
           ) : (
             <>
               {media.length > 0 ? (
                 <>
                   <div className="media-container">
-                    <div className="media-grid">
+                    {selectedGenre && (
+                      <div className="genre-header">
+                        <h2>
+                          <i className="fas fa-tags"></i>
+                          {selectedGenre.name} {mediaType === 'anime' ? 'Anime' : mediaType === 'movie' ? 'Movies' : 'TV Shows'}
+                        </h2>
+                        <button onClick={() => setSelectedGenre(null)} className="clear-genre">
+                          <i className="fas fa-times"></i>
+                          Clear Filter
+                        </button>
+                      </div>
+                    )}
+                    <div className="media-grid premium-grid">
                       {media.map((item, index) => (
                         <div
                           key={mediaType === 'anime' ? (item.mal_id || item.id || index) : (item.id || index)}
-                          className="media-card visible"
+                          className="media-card premium-card visible"
                           onClick={() => handleItemSelect(item)}
                           style={{ animationDelay: `${index * 0.05}s` }}
                         >
@@ -1270,41 +1519,53 @@ function App() {
                           <div className="no-poster" style={{ display: getMediaPoster(item) ? 'none' : 'flex' }}>
                             <i className="fas fa-film"></i>
                           </div>
-                          <div className="media-overlay">
-                            <div className="play-button">
+                          
+                          {/* FIXED: Enhanced overlay with proper z-index and pointer events */}
+                          <div className="media-overlay premium-overlay">
+                            <div className="play-button premium-play">
                               <i className="fas fa-play"></i>
+                              <div className="play-ripple"></div>
                             </div>
-                            <div className="media-actions">
+                            
+                            {/* FIXED: Enhanced action buttons with better event handling */}
+                            <div className="media-actions" style={{ zIndex: 1000, position: 'relative' }}>
                               <button
                                 className={`overlay-btn ${isInFavorites(item) ? 'active' : ''}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleFavorite(item);
+                                onClick={(e) => toggleFavorite(item, e)}
+                                title={isInFavorites(item) ? "Remove from Favorites" : "Add to Favorites"}
+                                style={{ 
+                                  pointerEvents: 'auto',
+                                  cursor: 'pointer',
+                                  zIndex: 1001
                                 }}
-                                title="Add to Favorites"
                               >
-                                <i className={`fas ${isInFavorites(item) ? 'fa-heart' : 'fa-heart-o'}`}></i>
+                                <i className={`${isInFavorites(item) ? 'fas' : 'far'} fa-heart`}></i>
                               </button>
+                              
                               <button
                                 className={`overlay-btn ${isInWatchlist(item) ? 'active' : ''}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleWatchlist(item);
+                                onClick={(e) => toggleWatchlist(item, e)}
+                                title={isInWatchlist(item) ? "Remove from Watchlist" : "Add to Watchlist"}
+                                style={{ 
+                                  pointerEvents: 'auto',
+                                  cursor: 'pointer',
+                                  zIndex: 1001
                                 }}
-                                title="Add to Watchlist"
                               >
-                                <i className={`fas ${isInWatchlist(item) ? 'fa-bookmark' : 'fa-bookmark-o'}`}></i>
+                                <i className={`${isInWatchlist(item) ? 'fas' : 'far'} fa-bookmark`}></i>
                               </button>
                             </div>
+                            <div className="card-glow"></div>
                           </div>
-                          <div className="media-info">
+                          
+                          <div className="media-info premium-info">
                             <h3>{getMediaTitle(item)}</h3>
                             <div className="media-meta">
-                              <span className="rating">
+                              <span className="rating premium-rating">
                                 <i className="fas fa-star"></i>
                                 {mediaType === 'anime' ? (item.score || 'N/A') : (item.vote_average?.toFixed(1) || 'N/A')}
                               </span>
-                              <span className="year">{getMediaYear(item)}</span>
+                              <span className="year premium-year">{getMediaYear(item)}</span>
                               {(isInFavorites(item) || isInWatchlist(item)) && (
                                 <div className="media-badges">
                                   {isInFavorites(item) && <span className="badge favorite"><i className="fas fa-heart"></i></span>}
@@ -1313,6 +1574,7 @@ function App() {
                               )}
                             </div>
                           </div>
+                          <div className="card-border"></div>
                         </div>
                       ))}
                     </div>
@@ -1320,20 +1582,23 @@ function App() {
                   {!showFavoritesPage && !showWatchlistPage && !showHistoryPage && <Pagination />}
                 </>
               ) : (
-                <div className="no-results">
+                <div className="no-results premium-no-results">
                   <i className="fas fa-search"></i>
                   <h3>
                     {currentSection === 'favorites' ? 'No favorites yet' : 
                      currentSection === 'watchlist' ? 'Your watchlist is empty' :
                      currentSection === 'history' ? 'No watch history' :
+                     selectedGenre ? `No ${selectedGenre.name.toLowerCase()} content found` :
                      `No ${mediaType === 'anime' ? 'anime' : mediaType === 'movie' ? 'movies' : 'shows'} found`}
                   </h3>
                   <p>
                     {currentSection === 'favorites' ? 'Start adding your favorite items!' : 
                      currentSection === 'watchlist' ? 'Add items you want to watch later.' :
                      currentSection === 'history' ? 'Start watching to build your history.' :
+                     selectedGenre ? 'Try searching for something else or explore other genres.' :
                      'Try searching for something else or check back later.'}
                   </p>
+                  <div className="no-results-glow"></div>
                 </div>
               )}
             </>
@@ -1342,8 +1607,8 @@ function App() {
       )}
 
       {selectedItem && (
-        <div className="media-player">
-          <div className="player-header">
+        <div className="media-player premium-player">
+          <div className="player-header premium-player-header">
             <button className="back-button" onClick={() => setSelectedItem(null)}>
               <i className="fas fa-arrow-left"></i> <span>Back</span>
             </button>
@@ -1359,7 +1624,7 @@ function App() {
                   <i className={`fas fa-chevron-${showSourceSelector ? 'up' : 'down'}`}></i>
                 </button>
                 {showSourceSelector && (
-                  <div className="source-dropdown">
+                  <div className="source-dropdown premium-dropdown">
                     {VIDEO_SOURCES.map((source, index) => (
                       <button
                         key={index}
@@ -1393,16 +1658,21 @@ function App() {
           <div className="player-main-content">
             <div className="player-content">
               {isPlayerLoading ? (
-                <div className="player-loading">
+                <div className="player-loading premium-loading">
                   <div className="loading-spinner-new">
                     <div className="spinner-ring"></div>
                     <div className="spinner-ring"></div>
                     <div className="spinner-ring"></div>
                   </div>
                   <p className="player-tip">Loading player... Trying {VIDEO_SOURCES[currentVideoSource].name}</p>
+                  <div className="loading-particles">
+                    <div className="particle"></div>
+                    <div className="particle"></div>
+                    <div className="particle"></div>
+                  </div>
                 </div>
               ) : (
-                <div className="video-wrapper">
+                <div className="video-wrapper premium-video">
                   <iframe
                     key={`${selectedSeason}-${selectedEpisode}-${currentVideoSource}`}
                     ref={iframeRef}
@@ -1417,6 +1687,7 @@ function App() {
                       }
                     }}
                   />
+                  <div className="video-glow"></div>
                 </div>
               )}
 
